@@ -1,0 +1,369 @@
+! ============================================================
+! Sael German 2025-0725
+! DMVPN Fase 2 con IKEv1 y EIGRP
+! Topologia: HUB + 2 SPOKES + ISP + LANs
+! Red base usada por matricula: 10.7.25.0
+!
+! Nota importante:
+! En DMVPN Fase 2 se permite comunicacion spoke-to-spoke directa.
+! Por eso los spokes usan una clave ISAKMP wildcard 0.0.0.0 0.0.0.0
+! para permitir que SPOKE1 y SPOKE2 formen IPSec directo entre ellos.
+! ============================================================
+
+
+! ============================================================
+! 1. CONFIGURACION DEL ROUTER ISP
+! ============================================================
+
+enable
+configure terminal
+
+hostname ISP
+ip cef
+
+interface Ethernet0/0
+ description WAN_HACIA_HUB
+ ip address 10.7.25.2 255.255.255.252
+ no shutdown
+
+interface Ethernet0/1
+ description WAN_HACIA_SPOKE2
+ ip address 10.7.25.10 255.255.255.252
+ no shutdown
+
+interface Ethernet0/2
+ description WAN_HACIA_SPOKE1
+ ip address 10.7.25.6 255.255.255.252
+ no shutdown
+
+end
+write memory
+
+
+! ============================================================
+! 2. CONFIGURACION DEL ROUTER HUB
+! ============================================================
+
+enable
+configure terminal
+
+hostname HUB
+ip cef
+
+interface Ethernet0/0
+ description WAN_HACIA_ISP
+ ip address 10.7.25.1 255.255.255.252
+ no shutdown
+
+interface Ethernet0/1
+ description LAN_HUB
+ ip address 10.7.25.65 255.255.255.224
+ no shutdown
+
+ip route 0.0.0.0 0.0.0.0 10.7.25.2
+
+crypto isakmp policy 10
+ encr aes 256
+ hash sha
+ authentication pre-share
+ group 5
+ lifetime 86400
+
+crypto isakmp key VPN12345 address 0.0.0.0 0.0.0.0
+
+crypto ipsec transform-set TS-DMVPN esp-aes 256 esp-sha-hmac
+ mode transport
+
+crypto ipsec profile DMVPN-PROFILE
+ set transform-set TS-DMVPN
+ set pfs group5
+
+interface Tunnel0
+ description DMVPN_PHASE2_HUB
+ ip address 10.7.25.161 255.255.255.224
+ no ip redirects
+ ip nhrp authentication DMVPN123
+ ip nhrp map multicast dynamic
+ ip nhrp network-id 725
+ no ip split-horizon eigrp 25
+ no ip next-hop-self eigrp 25
+ tunnel source Ethernet0/0
+ tunnel mode gre multipoint
+ tunnel key 725
+ tunnel protection ipsec profile DMVPN-PROFILE
+ no shutdown
+
+router eigrp 25
+ no auto-summary
+ passive-interface default
+ no passive-interface Tunnel0
+ network 10.7.25.64 0.0.0.31
+ network 10.7.25.160 0.0.0.31
+
+end
+write memory
+
+
+! ============================================================
+! 3. CONFIGURACION DEL ROUTER SPOKE1
+! SPOKE1 es el router del centro.
+! ============================================================
+
+enable
+configure terminal
+
+hostname SPOKE1
+ip cef
+
+interface Ethernet0/0
+ description WAN_HACIA_ISP
+ ip address 10.7.25.5 255.255.255.252
+ no shutdown
+
+interface Ethernet0/1
+ description LAN_SPOKE1
+ ip address 10.7.25.97 255.255.255.224
+ no shutdown
+
+ip route 0.0.0.0 0.0.0.0 10.7.25.6
+
+crypto isakmp policy 10
+ encr aes 256
+ hash sha
+ authentication pre-share
+ group 5
+ lifetime 86400
+
+! Clave wildcard para permitir comunicacion HUB-SPOKE y SPOKE-SPOKE
+crypto isakmp key VPN12345 address 0.0.0.0 0.0.0.0
+
+crypto ipsec transform-set TS-DMVPN esp-aes 256 esp-sha-hmac
+ mode transport
+
+crypto ipsec profile DMVPN-PROFILE
+ set transform-set TS-DMVPN
+ set pfs group5
+
+interface Tunnel0
+ description DMVPN_PHASE2_SPOKE1
+ ip address 10.7.25.162 255.255.255.224
+ no ip redirects
+ ip nhrp authentication DMVPN123
+ ip nhrp map 10.7.25.161 10.7.25.1
+ ip nhrp map multicast 10.7.25.1
+ ip nhrp nhs 10.7.25.161
+ ip nhrp network-id 725
+ tunnel source Ethernet0/0
+ tunnel mode gre multipoint
+ tunnel key 725
+ tunnel protection ipsec profile DMVPN-PROFILE
+ no shutdown
+
+router eigrp 25
+ no auto-summary
+ passive-interface default
+ no passive-interface Tunnel0
+ network 10.7.25.96 0.0.0.31
+ network 10.7.25.160 0.0.0.31
+
+end
+write memory
+
+
+! ============================================================
+! 4. CONFIGURACION DEL ROUTER SPOKE2
+! SPOKE2 es el router de la derecha.
+! ============================================================
+
+enable
+configure terminal
+
+hostname SPOKE2
+ip cef
+
+interface Ethernet0/0
+ description WAN_HACIA_ISP
+ ip address 10.7.25.9 255.255.255.252
+ no shutdown
+
+interface Ethernet0/1
+ description LAN_SPOKE2
+ ip address 10.7.25.129 255.255.255.224
+ no shutdown
+
+ip route 0.0.0.0 0.0.0.0 10.7.25.10
+
+crypto isakmp policy 10
+ encr aes 256
+ hash sha
+ authentication pre-share
+ group 5
+ lifetime 86400
+
+! Clave wildcard para permitir comunicacion HUB-SPOKE y SPOKE-SPOKE
+crypto isakmp key VPN12345 address 0.0.0.0 0.0.0.0
+
+crypto ipsec transform-set TS-DMVPN esp-aes 256 esp-sha-hmac
+ mode transport
+
+crypto ipsec profile DMVPN-PROFILE
+ set transform-set TS-DMVPN
+ set pfs group5
+
+interface Tunnel0
+ description DMVPN_PHASE2_SPOKE2
+ ip address 10.7.25.163 255.255.255.224
+ no ip redirects
+ ip nhrp authentication DMVPN123
+ ip nhrp map 10.7.25.161 10.7.25.1
+ ip nhrp map multicast 10.7.25.1
+ ip nhrp nhs 10.7.25.161
+ ip nhrp network-id 725
+ tunnel source Ethernet0/0
+ tunnel mode gre multipoint
+ tunnel key 725
+ tunnel protection ipsec profile DMVPN-PROFILE
+ no shutdown
+
+router eigrp 25
+ no auto-summary
+ passive-interface default
+ no passive-interface Tunnel0
+ network 10.7.25.128 0.0.0.31
+ network 10.7.25.160 0.0.0.31
+
+end
+write memory
+
+
+! ============================================================
+! 5. CONFIGURACION DE VPCH
+! Ejecutar en la consola de la VPC conectada al HUB
+! ============================================================
+
+ip 10.7.25.66 255.255.255.224 10.7.25.65
+save
+
+
+! ============================================================
+! 6. CONFIGURACION DE VPC1
+! Ejecutar en la consola de la VPC conectada a SPOKE1
+! ============================================================
+
+ip 10.7.25.98 255.255.255.224 10.7.25.97
+save
+
+
+! ============================================================
+! 7. CONFIGURACION DE VPC2
+! Ejecutar en la consola de la VPC conectada a SPOKE2
+! ============================================================
+
+ip 10.7.25.130 255.255.255.224 10.7.25.129
+save
+
+
+! ============================================================
+! COMANDOS DE VERIFICACION EN ISP
+! ============================================================
+
+show ip interface brief
+
+
+! ============================================================
+! COMANDOS DE VERIFICACION EN HUB
+! ============================================================
+
+show clock
+show ip interface brief
+show running-config interface tunnel0
+show running-config | section crypto
+show running-config | section router eigrp
+show dmvpn
+show ip nhrp
+show crypto isakmp sa
+show crypto ipsec sa
+show crypto session
+show ip eigrp neighbors
+show ip route eigrp
+
+
+! ============================================================
+! COMANDOS DE VERIFICACION EN SPOKE1
+! ============================================================
+
+show clock
+show ip interface brief
+show running-config interface tunnel0
+show running-config | section crypto
+show running-config | section router eigrp
+show dmvpn
+show ip nhrp
+show crypto isakmp sa
+show crypto ipsec sa
+show crypto session
+show ip eigrp neighbors
+show ip route eigrp
+show ip route 10.7.25.128
+
+
+! ============================================================
+! COMANDOS DE VERIFICACION EN SPOKE2
+! ============================================================
+
+show clock
+show ip interface brief
+show running-config interface tunnel0
+show running-config | section crypto
+show running-config | section router eigrp
+show dmvpn
+show ip nhrp
+show crypto isakmp sa
+show crypto ipsec sa
+show crypto session
+show ip eigrp neighbors
+show ip route eigrp
+show ip route 10.7.25.96
+
+
+! ============================================================
+! PRUEBAS LAN A LAN
+! ============================================================
+
+! En VPC1 hacia VPC2
+show ip
+ping 10.7.25.130
+trace 10.7.25.130
+
+! En VPC2 hacia VPC1
+show ip
+ping 10.7.25.98
+trace 10.7.25.98
+
+! En VPC1 hacia VPCH
+ping 10.7.25.66
+trace 10.7.25.66
+
+! En VPC2 hacia VPCH
+ping 10.7.25.66
+trace 10.7.25.66
+
+
+! ============================================================
+! RESULTADOS ESPERADOS
+! ============================================================
+! show dmvpn en HUB debe mostrar 2 peers NHRP.
+! show ip nhrp debe mostrar los spokes registrados.
+! show crypto isakmp sa debe mostrar QM_IDLE.
+! show crypto session debe mostrar UP-ACTIVE.
+! show crypto ipsec sa debe mostrar paquetes encaps y decaps.
+! show ip eigrp neighbors debe mostrar vecinos por Tunnel0.
+! show ip route eigrp debe mostrar rutas aprendidas por EIGRP.
+!
+! Para DMVPN Fase 2, el trace spoke-to-spoke debe ser directo:
+! VPC1 -> 10.7.25.97 -> 10.7.25.163 -> 10.7.25.130
+! VPC2 -> 10.7.25.129 -> 10.7.25.162 -> 10.7.25.98
+!
+! El mensaje "Destination port unreachable" al final del trace en VPCS
+! es normal y confirma que el destino fue alcanzado.
+! ============================================================
